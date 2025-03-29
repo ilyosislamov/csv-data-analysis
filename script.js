@@ -15,86 +15,282 @@ function analyzeData(data) {
     // Show analysis section
     document.getElementById('analysisResults').classList.remove('hidden');
 
-    // Generate summary statistics
-    const summary = generateSummary(data);
-    displaySummary(summary);
+    // Simple Questions Analysis
+    analyzeLeadTimes(data);
+    analyzeDelays(data);
+
+    // Complex Analysis
+    analyzeTransportationImpact(data);
+    analyzeSeasonalPatterns(data);
+    analyzeBullwhipEffect(data);
+    analyzeVariabilityCorrelation(data);
 
     // Display data preview
     displayDataPreview(data);
-
-    // Create visualizations
-    createVisualizations(data);
 }
 
-function generateSummary(data) {
-    const summary = {};
-    const columns = Object.keys(data[0]);
+function analyzeLeadTimes(data) {
+    // Supplier Lead Time Analysis
+    const supplierLeadTimes = groupAndAverage(data, 'Supplier', 'LeadTime');
+    const topSupplier = Object.entries(supplierLeadTimes)
+        .sort((a, b) => b[1] - a[1])[0];
+    
+    document.getElementById('supplierLeadTime').innerHTML = `
+        <p><strong>Highest Average Lead Time Supplier:</strong> ${topSupplier[0]} (${topSupplier[1].toFixed(2)} days)</p>
+    `;
 
-    columns.forEach(column => {
-        const values = data.map(row => row[column]).filter(val => val !== null && val !== undefined);
-        const numericValues = values.filter(val => typeof val === 'number');
+    // Transportation Mode Analysis
+    const transportLeadTimes = groupAndAverage(data, 'TransportationMode', 'LeadTime');
+    const bestTransport = Object.entries(transportLeadTimes)
+        .sort((a, b) => a[1] - b[1])[0];
+    
+    document.getElementById('transportationLeadTime').innerHTML = `
+        <p><strong>Lowest Average Lead Time Transport:</strong> ${bestTransport[0]} (${bestTransport[1].toFixed(2)} days)</p>
+    `;
 
-        summary[column] = {
-            type: numericValues.length === values.length ? 'numeric' : 'categorical',
-            count: values.length,
-            uniqueValues: new Set(values).size
-        };
+    // Product Category Analysis
+    const categoryLeadTimes = groupAndAverage(data, 'ProductCategory', 'LeadTime');
+    const bestCategory = Object.entries(categoryLeadTimes)
+        .sort((a, b) => a[1] - b[1])[0];
+    
+    document.getElementById('productCategoryLeadTime').innerHTML = `
+        <p><strong>Shortest Lead Time Category:</strong> ${bestCategory[0]} (${bestCategory[1].toFixed(2)} days)</p>
+    `;
+}
 
-        if (summary[column].type === 'numeric') {
-            summary[column].min = Math.min(...numericValues);
-            summary[column].max = Math.max(...numericValues);
-            summary[column].mean = numericValues.reduce((a, b) => a + b, 0) / numericValues.length;
-            summary[column].median = getMedian(numericValues);
-        } else {
-            const frequencies = values.reduce((acc, val) => {
-                acc[val] = (acc[val] || 0) + 1;
-                return acc;
-            }, {});
-            summary[column].topCategories = Object.entries(frequencies)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 3);
+function analyzeDelays(data) {
+    // Monthly Delays Analysis
+    const monthlyDelays = groupAndAverage(data, 'Month', 'DelayDuration');
+    const worstMonth = Object.entries(monthlyDelays)
+        .sort((a, b) => b[1] - a[1])[0];
+    
+    document.getElementById('monthlyDelays').innerHTML = `
+        <p><strong>Highest Average Delay Month:</strong> ${worstMonth[0]} (${worstMonth[1].toFixed(2)} days)</p>
+    `;
+
+    // Disruption Type Analysis
+    const disruptionDelays = groupAndAverage(data, 'DisruptionType', 'DelayDuration');
+    const worstDisruption = Object.entries(disruptionDelays)
+        .sort((a, b) => b[1] - a[1])[0];
+    
+    document.getElementById('disruptionDelays').innerHTML = `
+        <p><strong>Longest Average Delay Cause:</strong> ${worstDisruption[0]} (${worstDisruption[1].toFixed(2)} days)</p>
+    `;
+}
+
+function analyzeTransportationImpact(data) {
+    const transportDelays = {};
+    const transportCounts = {};
+    
+    data.forEach(row => {
+        if (row.TransportationMode && row.DelayDuration) {
+            if (!transportDelays[row.TransportationMode]) {
+                transportDelays[row.TransportationMode] = 0;
+                transportCounts[row.TransportationMode] = 0;
+            }
+            transportDelays[row.TransportationMode] += row.DelayDuration;
+            transportCounts[row.TransportationMode]++;
         }
     });
 
-    return summary;
-}
+    const avgDelays = Object.keys(transportDelays).map(mode => ({
+        mode,
+        avgDelay: transportDelays[mode] / transportCounts[mode]
+    }));
 
-function getMedian(numbers) {
-    const sorted = numbers.slice().sort((a, b) => a - b);
-    const middle = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 0
-        ? (sorted[middle - 1] + sorted[middle]) / 2
-        : sorted[middle];
-}
-
-function displaySummary(summary) {
-    const summaryDiv = document.getElementById('summary');
-    let html = '<div class="table-responsive"><table class="table table-bordered">';
-    html += '<thead><tr><th>Column</th><th>Type</th><th>Count</th><th>Unique Values</th><th>Statistics</th></tr></thead><tbody>';
-
-    for (const [column, stats] of Object.entries(summary)) {
-        html += `<tr>
-            <td>${column}</td>
-            <td>${stats.type}</td>
-            <td>${stats.count}</td>
-            <td>${stats.uniqueValues}</td>
-            <td>`;
-
-        if (stats.type === 'numeric') {
-            html += `Min: ${stats.min.toFixed(2)}<br>
-                    Max: ${stats.max.toFixed(2)}<br>
-                    Mean: ${stats.mean.toFixed(2)}<br>
-                    Median: ${stats.median.toFixed(2)}`;
-        } else {
-            html += 'Top categories:<br>' + 
-                   stats.topCategories.map(([cat, count]) => `${cat}: ${count}`).join('<br>');
+    const ctx = document.getElementById('transportationImpactChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: avgDelays.map(d => d.mode),
+            datasets: [{
+                label: 'Average Delay Duration (days)',
+                data: avgDelays.map(d => d.avgDelay),
+                backgroundColor: 'rgba(54, 162, 235, 0.5)'
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Average Delay (days)'
+                    }
+                }
+            }
         }
+    });
+}
 
-        html += '</td></tr>';
-    }
+function analyzeSeasonalPatterns(data) {
+    const monthlyLeadTimes = groupAndAverage(data, 'Month', 'LeadTime');
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                   'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    const ctx = document.getElementById('seasonalPatternChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: [{
+                label: 'Average Lead Time',
+                data: months.map(month => monthlyLeadTimes[month] || 0),
+                borderColor: 'rgba(75, 192, 192, 1)',
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Average Lead Time (days)'
+                    }
+                }
+            }
+        }
+    });
+}
 
-    html += '</tbody></table></div>';
-    summaryDiv.innerHTML = html;
+function analyzeBullwhipEffect(data) {
+    const monthlyDemand = {};
+    const monthlyOrders = {};
+    
+    data.forEach(row => {
+        if (row.Month) {
+            if (!monthlyDemand[row.Month]) {
+                monthlyDemand[row.Month] = [];
+                monthlyOrders[row.Month] = [];
+            }
+            if (row.CustomerDemand) monthlyDemand[row.Month].push(row.CustomerDemand);
+            if (row.OrderQuantity) monthlyOrders[row.Month].push(row.OrderQuantity);
+        }
+    });
+
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                   'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    const ctx = document.getElementById('bullwhipChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: [
+                {
+                    label: 'Customer Demand Variability',
+                    data: months.map(month => calculateCV(monthlyDemand[month])),
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    tension: 0.1
+                },
+                {
+                    label: 'Order Quantity Variability',
+                    data: months.map(month => calculateCV(monthlyOrders[month])),
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    tension: 0.1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Coefficient of Variation'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function analyzeVariabilityCorrelation(data) {
+    const monthlyData = {};
+    
+    data.forEach(row => {
+        if (row.Month && row.OrderQuantity && row.LeadTime) {
+            if (!monthlyData[row.Month]) {
+                monthlyData[row.Month] = {
+                    orders: [],
+                    leadTimes: []
+                };
+            }
+            monthlyData[row.Month].orders.push(row.OrderQuantity);
+            monthlyData[row.Month].leadTimes.push(row.LeadTime);
+        }
+    });
+
+    const variabilityData = Object.entries(monthlyData).map(([month, data]) => ({
+        month,
+        orderCV: calculateCV(data.orders),
+        leadTimeCV: calculateCV(data.leadTimes)
+    }));
+
+    const ctx = document.getElementById('variabilityCorrelationChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: 'Order Variability vs Lead Time Variability',
+                data: variabilityData.map(d => ({
+                    x: d.orderCV,
+                    y: d.leadTimeCV
+                })),
+                backgroundColor: 'rgba(54, 162, 235, 0.5)'
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Order Quantity CV'
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Lead Time CV'
+                    }
+                }
+            }
+        }
+    });
+}
+
+function groupAndAverage(data, groupKey, valueKey) {
+    const groups = {};
+    const counts = {};
+    
+    data.forEach(row => {
+        if (row[groupKey] && row[valueKey] !== undefined && row[valueKey] !== null) {
+            if (!groups[row[groupKey]]) {
+                groups[row[groupKey]] = 0;
+                counts[row[groupKey]] = 0;
+            }
+            groups[row[groupKey]] += row[valueKey];
+            counts[row[groupKey]]++;
+        }
+    });
+
+    Object.keys(groups).forEach(key => {
+        groups[key] = groups[key] / counts[key];
+    });
+
+    return groups;
+}
+
+function calculateCV(array) {
+    if (!array || array.length === 0) return 0;
+    const mean = array.reduce((a, b) => a + b, 0) / array.length;
+    const variance = array.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / array.length;
+    return Math.sqrt(variance) / mean;
 }
 
 function displayDataPreview(data) {
@@ -119,150 +315,4 @@ function displayDataPreview(data) {
         bodyHtml += '</tr>';
     });
     table.querySelector('tbody').innerHTML = bodyHtml;
-}
-
-function createVisualizations(data) {
-    // Get numerical columns
-    const numericalColumns = Object.keys(data[0]).filter(column => {
-        return data.every(row => typeof row[column] === 'number' || row[column] === null);
-    });
-
-    if (numericalColumns.length > 0) {
-        createDistributionChart(data, numericalColumns[0]);
-        if (numericalColumns.length > 1) {
-            createCorrelationMatrix(data, numericalColumns);
-        }
-    }
-}
-
-function createDistributionChart(data, column) {
-    const values = data.map(row => row[column]).filter(val => val !== null);
-    const ctx = document.getElementById('distributionChart').getContext('2d');
-    
-    // Create histogram bins
-    const binCount = Math.min(20, Math.ceil(Math.sqrt(values.length)));
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const binWidth = (max - min) / binCount;
-    
-    const bins = Array(binCount).fill(0);
-    values.forEach(value => {
-        const binIndex = Math.min(Math.floor((value - min) / binWidth), binCount - 1);
-        bins[binIndex]++;
-    });
-
-    const labels = bins.map((_, i) => (min + (i + 0.5) * binWidth).toFixed(2));
-
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: `Distribution of ${column}`,
-                data: bins,
-                backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Frequency'
-                    }
-                },
-                x: {
-                    title: {
-                        display: true,
-                        text: column
-                    }
-                }
-            }
-        }
-    });
-}
-
-function createCorrelationMatrix(data, columns) {
-    const ctx = document.getElementById('correlationChart').getContext('2d');
-    
-    // Calculate correlation matrix
-    const correlationMatrix = [];
-    columns.forEach(col1 => {
-        const row = [];
-        columns.forEach(col2 => {
-            const correlation = calculateCorrelation(data, col1, col2);
-            row.push(correlation);
-        });
-        correlationMatrix.push(row);
-    });
-
-    new Chart(ctx, {
-        type: 'heatmap',
-        data: {
-            labels: columns,
-            datasets: correlationMatrix.map((row, i) => ({
-                label: columns[i],
-                data: row.map((value, j) => ({
-                    x: columns[j],
-                    y: columns[i],
-                    value: value
-                }))
-            }))
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    callbacks: {
-                        label: (context) => {
-                            return `Correlation: ${context.raw.value.toFixed(2)}`;
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    type: 'category',
-                    title: {
-                        display: true,
-                        text: 'Variables'
-                    }
-                },
-                y: {
-                    type: 'category',
-                    title: {
-                        display: true,
-                        text: 'Variables'
-                    }
-                }
-            }
-        }
-    });
-}
-
-function calculateCorrelation(data, col1, col2) {
-    const pairs = data
-        .map(row => [row[col1], row[col2]])
-        .filter(pair => pair[0] !== null && pair[1] !== null);
-
-    const n = pairs.length;
-    if (n === 0) return 0;
-
-    const sum1 = pairs.reduce((acc, pair) => acc + pair[0], 0);
-    const sum2 = pairs.reduce((acc, pair) => acc + pair[1], 0);
-    const sum1Sq = pairs.reduce((acc, pair) => acc + pair[0] * pair[0], 0);
-    const sum2Sq = pairs.reduce((acc, pair) => acc + pair[1] * pair[1], 0);
-    const pSum = pairs.reduce((acc, pair) => acc + pair[0] * pair[1], 0);
-
-    const num = (n * pSum) - (sum1 * sum2);
-    const den = Math.sqrt((n * sum1Sq - sum1 * sum1) * (n * sum2Sq - sum2 * sum2));
-
-    return den === 0 ? 0 : num / den;
 }
