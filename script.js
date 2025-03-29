@@ -6,8 +6,35 @@ function handleFileSelect(event) {
         header: true,
         dynamicTyping: true,
         complete: function(results) {
-            analyzeData(results.data);
+            // Preprocess the data to calculate lead times and delays
+            const processedData = preprocessData(results.data);
+            analyzeData(processedData);
         }
+    });
+}
+
+function preprocessData(data) {
+    return data.map(row => {
+        // Convert date strings to Date objects
+        const orderDate = new Date(row.Order_Date);
+        const expectedDate = new Date(row.Expected_Delivery_Date);
+        const actualDate = new Date(row.Actual_Delivery_Date);
+
+        // Calculate lead time (actual delivery - order date in days)
+        const leadTime = Math.ceil((actualDate - orderDate) / (1000 * 60 * 60 * 24));
+
+        // Calculate delay (actual - expected delivery in days)
+        const delay = Math.ceil((actualDate - expectedDate) / (1000 * 60 * 60 * 24));
+
+        // Extract month from order date
+        const month = orderDate.toLocaleString('default', { month: 'long' });
+
+        return {
+            ...row,
+            LeadTime: leadTime,
+            DelayDuration: delay,
+            Month: month
+        };
     });
 }
 
@@ -40,7 +67,7 @@ function analyzeLeadTimes(data) {
     `;
 
     // Transportation Mode Analysis
-    const transportLeadTimes = groupAndAverage(data, 'TransportationMode', 'LeadTime');
+    const transportLeadTimes = groupAndAverage(data, 'Transportation_Mode', 'LeadTime');
     const bestTransport = Object.entries(transportLeadTimes)
         .sort((a, b) => a[1] - b[1])[0];
     
@@ -49,7 +76,7 @@ function analyzeLeadTimes(data) {
     `;
 
     // Product Category Analysis
-    const categoryLeadTimes = groupAndAverage(data, 'ProductCategory', 'LeadTime');
+    const categoryLeadTimes = groupAndAverage(data, 'Product_Category', 'LeadTime');
     const bestCategory = Object.entries(categoryLeadTimes)
         .sort((a, b) => a[1] - b[1])[0];
     
@@ -69,7 +96,7 @@ function analyzeDelays(data) {
     `;
 
     // Disruption Type Analysis
-    const disruptionDelays = groupAndAverage(data, 'DisruptionType', 'DelayDuration');
+    const disruptionDelays = groupAndAverage(data, 'Disruption_Type', 'DelayDuration');
     const worstDisruption = Object.entries(disruptionDelays)
         .sort((a, b) => b[1] - a[1])[0];
     
@@ -83,13 +110,13 @@ function analyzeTransportationImpact(data) {
     const transportCounts = {};
     
     data.forEach(row => {
-        if (row.TransportationMode && row.DelayDuration) {
-            if (!transportDelays[row.TransportationMode]) {
-                transportDelays[row.TransportationMode] = 0;
-                transportCounts[row.TransportationMode] = 0;
+        if (row.Transportation_Mode && row.DelayDuration) {
+            if (!transportDelays[row.Transportation_Mode]) {
+                transportDelays[row.Transportation_Mode] = 0;
+                transportCounts[row.Transportation_Mode] = 0;
             }
-            transportDelays[row.TransportationMode] += row.DelayDuration;
-            transportCounts[row.TransportationMode]++;
+            transportDelays[row.Transportation_Mode] += row.DelayDuration;
+            transportCounts[row.Transportation_Mode]++;
         }
     });
 
@@ -166,8 +193,8 @@ function analyzeBullwhipEffect(data) {
                 monthlyDemand[row.Month] = [];
                 monthlyOrders[row.Month] = [];
             }
-            if (row.CustomerDemand) monthlyDemand[row.Month].push(row.CustomerDemand);
-            if (row.OrderQuantity) monthlyOrders[row.Month].push(row.OrderQuantity);
+            if (row.Customer_Demand) monthlyDemand[row.Month].push(row.Customer_Demand);
+            if (row.Order_Quantity) monthlyOrders[row.Month].push(row.Order_Quantity);
         }
     });
 
@@ -213,14 +240,14 @@ function analyzeVariabilityCorrelation(data) {
     const monthlyData = {};
     
     data.forEach(row => {
-        if (row.Month && row.OrderQuantity && row.LeadTime) {
+        if (row.Month && row.Order_Quantity && row.LeadTime) {
             if (!monthlyData[row.Month]) {
                 monthlyData[row.Month] = {
                     orders: [],
                     leadTimes: []
                 };
             }
-            monthlyData[row.Month].orders.push(row.OrderQuantity);
+            monthlyData[row.Month].orders.push(row.Order_Quantity);
             monthlyData[row.Month].leadTimes.push(row.LeadTime);
         }
     });
